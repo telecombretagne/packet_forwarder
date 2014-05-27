@@ -143,6 +143,49 @@ static uint32_t meas_dw_payload_byte = 0; /* sum of radio payload bytes sent for
 static uint32_t meas_nb_tx_ok = 0; /* count packets emitted successfully */
 static uint32_t meas_nb_tx_fail = 0; /* count packets were TX failed for other reasons */
 
+
+
+/* -------------------------------------------------------------------------- */
+/* --- OpenEnergy Data TESTING WI6LAB STRUCT -------------------------------- */
+
+
+/*OED paylaod structures*/
+typedef struct {
+	unsigned char fraud:1;
+	unsigned char leak:1;
+	unsigned char local_access:1;
+	unsigned char vbat_low:1;
+	unsigned char M_count:4;
+}stat_vector_t;
+
+typedef struct {
+	unsigned short int delta;
+} cmpt_delta_value_t ;
+
+#define MAX_SUBDAILY_INDEX	15
+
+// ATTENTION!!
+// The data that will come is unnaligned. because its an even number of bytes from the 802.15.4 header -15 bytes-
+// (Here we treat as padding, but will yuse the 802.15.4 Source MAC addres maybe)
+//    * http://stackoverflow.com/questions/18667177/how-use-a-structure-in-a-unaligned-buffer
+typedef struct __attribute__ ((__packed__)) {
+	
+	unsigned char padding[15]; /* 15 bytes of 802.15.4 MAC Header */
+	
+	unsigned short int type;
+	stat_vector_t stat_vector;
+	unsigned char reserved;
+	unsigned int temit;
+	unsigned int tcmp;
+	unsigned int timestamp;
+	unsigned int index;
+	unsigned short int  value[MAX_SUBDAILY_INDEX]; /* unsigned short int instead of cmpt_delta_value_t for debuggin simplification purposes*/
+	
+} sub_daily_frame_t; 
+
+/* -------------------------------------------------------------------------- */
+
+
 /* -------------------------------------------------------------------------- */
 /* --- PRIVATE FUNCTIONS DECLARATION ---------------------------------------- */
 
@@ -1039,7 +1082,37 @@ void thread_up(void) {
 		++buff_index;
 		buff_up[buff_index] = 0; /* add string terminator, for safety */
 		
-		// printf("\nJSON up: %s\n", (char *)(buff_up + 12)); /* DEBUG: display JSON payload */
+		printf("\nJSON up: %s\n", (char *)(buff_up + 12)); /* DEBUG: display JSON payload */
+		
+		/********************BEGIN TB TEST ****************************/	
+		// We decode the sub_daily_frame_t
+		sub_daily_frame_t * temp = (sub_daily_frame_t *)((void *)(p->payload));
+
+		/* DEBUG: display Decoded  sub_daily_frame_t */	
+		MSG("\nsub_daily_frame_t: "); 
+		MSG("\n\t type (u short int): 0x%.4x "			, (unsigned short int)		(temp->type));
+		MSG("\n\t stat_vector (stat_vector_t): 0x%.2x "	, (stat_vector_t)	(temp->stat_vector)); 
+		MSG("\n\t reserved (uchar): 0x%.2x "			, (unsigned char)	(temp->reserved));
+		MSG("\n\t temit (uint): 0x%.8x (%u)"			, (unsigned int)	(temp->temit) , (unsigned int)	(temp->temit) );
+		MSG("\n\t tcmp (uint): 0x%.8x (%u)"				, (unsigned int)	(temp->tcmp), (unsigned int)	(temp->tcmp));
+		MSG("\n\t timestamp (uint): 0x%.8x (%u) "		, (unsigned int)	(temp->timestamp), 	(unsigned int)	(temp->timestamp));
+		MSG("\n\t index (uint): 0x%.8x (%u)"	 		, (unsigned int)	(temp->index), 		(unsigned int)	(temp->index));
+		
+		for (int i=0; i<16;i++)
+		{
+				MSG("\n\t\t delta_value_[%d] (uint): 0x%.4x (%hu)", i	, (unsigned short int)(temp->value[i]), (unsigned short int)(temp->value[i]));
+		}
+		
+		char buffer[512];
+		memcpy((void *)buffer, (void *)p->payload, p->size);
+		MSG("\n\nHere is the Payload (size: %d bytes):\n", p->size);
+		for (int i = 0; i <  p->size; i++)
+		{
+			MSG("%02X", buffer[i]);
+		}
+		printf("\n");
+		
+		/********************END TB TEST ****************************/
 		
 		/* send datagram to server */
 		send(sock_up, (void *)buff_up, buff_index, 0);
